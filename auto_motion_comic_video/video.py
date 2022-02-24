@@ -1,12 +1,12 @@
 from typing import List
-from beans import scene
+from .scene import AnimScene
 import cv2
 import os
 import numpy as np
 import random
 
 class AnimVideo:
-    def __init__(self, scenes: List[scene.AnimScene], fps: int = 10):
+    def __init__(self, scenes: List[AnimScene], fps: int = 10):
         self.scenes = scenes
         self.fps = fps
     # @profile
@@ -16,7 +16,7 @@ class AnimVideo:
                 os.makedirs("tmp")
             rnd_hash = random.getrandbits(64)
             output_path = f"tmp/{rnd_hash}.mp4"
-
+        
         fourcc = cv2.VideoWriter_fourcc(*"mp4v")
         background = self.scenes[0].frames[0]
         if os.path.isfile(output_path):

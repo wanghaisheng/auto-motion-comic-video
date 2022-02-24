@@ -98,12 +98,14 @@ class AnimImg:
             _background = background
         _img.convert("RGBA")
         bg_w, bg_h = _background.size
+        # print('red---',bg_w,bg_h)
+
         offset = (self.x, self.y)
         # if there is a shake effect to be applied
-        # adjust the paste offset with random ints
+        # adjust the paste offset with random ints 
         if self.shake_effect:
             offset = (self.x + r.randint(-1, 1), self.y + r.randint(-1, 1))
-        # paste _img onto _background with offset
+        # paste _img onto _background with offset 
         _background.paste(_img, offset, mask=_img)
         if background is None:
             return _background

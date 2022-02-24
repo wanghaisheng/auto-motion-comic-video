@@ -1,10 +1,10 @@
+import imp
 from math import ceil
-from beans.comment_bridge import CommentBridge
+from .comment_bridge import CommentBridge
 from PIL import Image, ImageDraw, ImageFont , ImageFile
 # ImageFile.LOAD_TRUNCATED_IMAGES = True
 from matplotlib.pyplot import imshow
 import numpy as np
-import cv2
 from typing import List, Dict
 import random
 import os
@@ -18,53 +18,78 @@ from collections import Counter
 import random
 from textwrap import wrap
 import spacy
-from polarity_analysis import Analizer
+from .polarity_analysis import Analizer
 analizer = Analizer()
-from beans.img import AnimImg
-from beans.text import AnimText
-from beans.scene import AnimScene
-from beans.video import AnimVideo
-from constants import Character, lag_frames, fps
-import constants
+from .img import AnimImg
+from .text import AnimText
+from .scene import AnimScene
+from .video import AnimVideo
+from .constants import *
+import requests
+
 import re
+def group_words(s):
+    regex = []
+
+    # Match a whole word:
+    regex += [u'\w+']
+
+    # Match a single CJK character:
+    regex += [u'[\u4e00-\ufaff]']
+
+    # Match one of anything else, except for spaces:
+    regex += [u'[^\s]']
+
+    regex = "|".join(regex)
+    r = re.compile(regex)
+
+    return r.findall(s)
 
 nlp = spacy.load("xx_ent_wiki_sm")
 nlp.add_pipe(nlp.create_pipe('sentencizer'))
 
-
+def spliteKeyWord(str):
+    regex = r"[\u4e00-\ufaff]|[0-9]+|[a-zA-Z]+\'*[a-z]*"
+    matches = re.findall(regex, str, re.UNICODE)
+    return matches
 def split_str_into_newlines(text: str,font_path,font_size):
     font = ImageFont.truetype(font_path, font_size)
     image_size = font.getsize(text=text)
-
+    text=spliteKeyWord(text)
+    text=' '.join(text)
     words = text.split(" ")
     new_text = ""
     for word in words:
         last_sentence = new_text.split("\n")[-1] + word + " "
+        # print('00000000000000---',last_sentence,font.getsize(text=last_sentence)[0])
         if font.getsize(text=last_sentence)[0] >= 240:
             new_text += "\n" + word + " "
         else:
             new_text += word + " "
+    # print('=======',new_text.encode('utf-8'))
     return new_text
 
 
 # @profile
 def do_video(config: List[Dict], output_filename):
+    dimension =[256,192]
     scenes = []
     sound_effects = []
     part = 0
     for scene in config:
         # We pick up the images to be rendered
-        bg = AnimImg(constants.location_map[scene["location"]])
-        arrow = AnimImg("assets/arrow.png", x=235, y=170, w=15, h=15, key_x=5)
+        bg = AnimImg(location_map[scene["location"]])
+        # print('----------------',bg.h,bg.w)
+        arrow = AnimImg("assets/arrow.png", x=235, y=170*4, w=15, h=15, key_x=5)
         textbox = AnimImg("assets/textbox4.png", w=bg.w)
         objection = AnimImg("assets/objection.gif")
         bench = None
-        # constants.Location needs a more in-depth chose
-        if scene["location"] == constants.Location.COURTROOM_LEFT:
+        # Location needs a more in-depth chose
+        if scene["location"] == Location.COURTROOM_LEFT:
             bench = AnimImg("assets/logo-left.png")
-        elif scene["location"] == constants.Location.COURTROOM_RIGHT:
+        elif scene["location"] == Location.COURTROOM_RIGHT:
             bench = AnimImg("assets/logo-right.png")
-        elif scene["location"] == constants.Location.WITNESS_STAND:
+        elif scene["location"] == Location.WITNESS_STAND:
             bench = AnimImg("assets/witness_stand.png", w=bg.w)
             bench.y = bg.h - bench.h
         if "audio" in scene:
@@ -76,14 +101,14 @@ def do_video(config: List[Dict], output_filename):
         for obj in scene["scene"]:
             # First we check for evidences
             if "evidence" in obj and obj['evidence'] is not None:
-                if scene["location"] == constants.Location.COURTROOM_RIGHT:
-                    evidence = AnimImg(obj["evidence"], x=26, y=19, w=85, maxh=75)
+                if scene["location"] == Location.COURTROOM_RIGHT:
+                    evidence = AnimImg(obj["evidence"], x=26, y=19*4, w=85, maxh=75)
                 else:
-                    evidence = AnimImg(obj["evidence"], x=145, y=19, w=85, maxh=75)
+                    evidence = AnimImg(obj["evidence"], x=145, y=19*4, w=85, maxh=75)
             else:
                 evidence = None
             if "character" in obj:
-                _dir = constants.character_map[obj["character"]]
+                _dir = character_map[obj["character"]]
                 current_character_name = obj["character"]
                 #                 print('character change', current_character_name)
                 #                 if current_character_name == "Larry":
@@ -91,9 +116,9 @@ def do_video(config: List[Dict], output_filename):
                 character_name = AnimText(
                     current_character_name,
                     font_path="assets/igiari/Igiari.ttf",
-                    font_size=12,
+                    font_size=12*4,
                     x=4,
-                    y=113,
+                    y=113*4,
                 )
                 default = "normal" if "emotion" not in obj else obj["emotion"]
                 default_path = (
@@ -145,19 +170,22 @@ def do_video(config: List[Dict], output_filename):
                 else:
                     talking_character = AnimImg(default_path, half_speed=True)
             if "action" in obj and (
-                obj["action"] == constants.Action.TEXT
-                or obj["action"] == constants.Action.TEXT_SHAKE_EFFECT
+                obj["action"] == Action.TEXT
+                or obj["action"] == Action.TEXT_SHAKE_EFFECT
             ):
                 character = talking_character
                 splitter_font_path = AnimText(obj["text"]).font_path
                 _text = split_str_into_newlines(obj["text"],splitter_font_path,15)
+                # print('!!!!!!',_text)
+                # tts 
+
                 _colour = None if "colour" not in obj else obj["colour"]
                 text = AnimText(
                     _text,
                     font_path="assets/igiari/Igiari.ttf",
-                    font_size=15,
+                    font_size=15*4,
                     x=5,
-                    y=130,
+                    y=130*4,
                     typewriter_effect=True,
                     colour=_colour,
                 )
@@ -167,11 +195,11 @@ def do_video(config: List[Dict], output_filename):
                     _character_name = AnimText(
                         obj["name"],
                         font_path="assets/igiari/Igiari.ttf",
-                        font_size=12,
-                        x=4,
-                        y=113,
+                        font_size=12*4,
+                        x=4*4,
+                        y=113*4,
                     )
-                if obj["action"] == constants.Action.TEXT_SHAKE_EFFECT:
+                if obj["action"] == Action.TEXT_SHAKE_EFFECT:
                     bg.shake_effect = True
                     character.shake_effect = True
                     if bench is not None:
@@ -186,8 +214,9 @@ def do_video(config: List[Dict], output_filename):
                 scenes.append(
                     AnimScene(scene_objs, len(_text) - 1, start_frame=current_frame)
                 )
-                sound_effects.append({"_type": "bip", "length": len(_text) - 1})
-                if obj["action"] == constants.Action.TEXT_SHAKE_EFFECT:
+                # print('bip ======', len(_text) - 1)
+                sound_effects.append({"_type": "bip", "length": len(_text) - 1,"text":_text,"character":current_character_name.lower()})
+                if obj["action"] == Action.TEXT_SHAKE_EFFECT:
                     bg.shake_effect = False
                     character.shake_effect = False
                     if bench is not None:
@@ -206,7 +235,7 @@ def do_video(config: List[Dict], output_filename):
                 )
                 current_frame += num_frames
                 sound_effects.append({"_type": "silence", "length": lag_frames})
-            elif "action" in obj and obj["action"] == constants.Action.SHAKE_EFFECT:
+            elif "action" in obj and obj["action"] == Action.SHAKE_EFFECT:
                 bg.shake_effect = True
                 character.shake_effect = True
                 if bench is not None:
@@ -242,7 +271,7 @@ def do_video(config: List[Dict], output_filename):
                 if bench is not None:
                     bench.shake_effect = False
                 textbox.shake_effect = False
-            elif "action" in obj and obj["action"] == constants.Action.OBJECTION:
+            elif "action" in obj and obj["action"] == Action.OBJECTION:
                 #                 bg.shake_effect = True
                 #                 character.shake_effect = True
                 #                 if bench is not None:
@@ -293,7 +322,89 @@ def do_video(config: List[Dict], output_filename):
     if (len(scenes) > 0):
         video = AnimVideo(scenes, fps=fps)
         video.render(output_filename + '/' +str(part) + '.mp4')
+    # print('!!!!!!',scenes)
     return sound_effects
+
+
+proxies = {
+    'http': 'socks5://127.0.0.1:1080',
+    'https': 'socks5://127.0.0.1:1080'
+}
+
+def ttsmp3_polly_tts(text, character_name,ttsdir,index):
+    # print('tts',text)
+    
+# Add a break
+# Mary had a little lamb <break time="1s"/> Whose fleece was white as snow.
+# Emphasizing words
+# I already told you I <emphasis level="strong">really like </emphasis> that person. 
+    TTSMP3_URL = "https://ttsmp3.com/makemp3_new.php"
+    character_idlist=[]
+    AllowedVoiceList_en=["Justin","Salli","Ivy","Kendra","Matthew","Joanna",
+    "Russell", "Nicole", "Amy", "Brian", "Emma", "Aditi", "Raveena",
+                        "Aria", "Joey", "Kimberly"]
+
+    mapping = {"PHOENIX":'Russell',
+"EDGEWORTH":'Geraint',
+"GODOT":'Joey',
+"FRANZISKA":'Salli',
+"JUDGE":'Brian',
+"LARRY":'Joey',
+"MAYA":'Raveena',
+"KARMA":'Brian',
+"PAYNE":'Geraint',
+"MAGGEY":'Aditi',
+"PEARL":'Joanna',
+"LOTTA":'Emma',
+"GUMSHOE":'Matthew',
+"GROSSBERG":'Matthew',
+"APOLLO":'Russell',
+"KLAVIER":'Brian',
+"MIA":'Aria',
+"WILL":'Russell',
+"OLDBAG":'Ayanda',
+"REDD":'Russell'}
+    if character_name not in character_idlist:
+        character_idlist.append(character_name)
+    # userid=character_idlist.index(character_name)   
+    accent_name=mapping[character_name.upper()]
+    if not accent_name or accent_name=="":
+        accent_name = 'Brian'
+    form_data = {
+        "msg": text,
+        "lang": accent_name,
+        "source": "ttsmp3"
+    }
+    r = requests.post(TTSMP3_URL, form_data, proxies=proxies)
+    if r.status_code == 200:
+        # print(r.status_code)
+        json = r.json()
+        # print(json)
+        url = json["URL"]
+        filename = json["MP3"]
+        mp3_file = requests.get(url, proxies=proxies)
+        # path = f"{AUDIO_PATH}{filename}"
+        # time.sleep(2)
+
+        outputdir = ttsdir+os.sep+str(index)
+        outputfilepath = outputdir+os.sep+str(index)+'.mp3'
+        if os.path.exists(outputdir):
+
+            print('sound directory exists', outputdir)
+        else:
+            os.makedirs(outputdir, exist_ok=True)
+            print('create sound directory', outputdir)
+        # print('tts', index, '----', outputfilepath)
+
+        with open(outputfilepath, "wb") as out_file:
+            out_file.write(mp3_file.content)
+
+            print('ttsmp3 ok', outputfilepath)
+        return outputfilepath
+        # return mp3_file.content
+    else:
+        print('pls choose another tts tool')
+        return False
 
 def do_audio(sound_effects: List[Dict], output_filename):
     audio_se = AudioSegment.empty()
@@ -315,7 +426,15 @@ def do_audio(sound_effects: List[Dict], output_filename):
         if obj["_type"] == "silence":
             audio_se += AudioSegment.silent(duration=int(obj["length"] * spf))
         elif obj["_type"] == "bip":
-            audio_se += blink + long_bip[: max(int(obj["length"] * spf - len(blink)), 0)]
+            # print('00000000',obj,long_bip[: max(int(obj["length"] * spf - len(blink)), 0)])
+
+            # synthentic_audio_fakeyou
+            index=0
+            print('tts processing:',obj["text"],obj["character"],'./tts-tmp',index)
+            audio_se += blink + AudioSegment.from_mp3(ttsmp3_polly_tts(obj["text"],obj["character"],'./tts-tmp',index))
+            index =index +1
+            # audio_se += blink + long_bip[: max(int(obj["length"] * spf - len(blink)), 0)]
+
         elif obj["_type"] == "objection":
             if obj["character"] == "phoenix":
                 audio_se += pheonix_objection[: int(obj["length"] * spf)]
@@ -382,51 +501,60 @@ def ace_attorney_anim(config: List[Dict], output_filename: str = "output.mp4"):
         acodec="aac",
         strict="experimental"
     )
-    try:
-        out.run(capture_stdout=True, capture_stderr=True)
-    except ffmpeg.Error as e:
-        print('ffmpeg error! stdout:')
-        print(e.stdout.decode('utf8'))
-        print('stderr:')
-        print(e.stderr.decode('utf8'))
-
+    out.run()
     if os.path.exists(root_filename):
         shutil.rmtree(root_filename)
     if os.path.exists(text_filename):
         os.remove(text_filename)
     if os.path.exists(audio_filename):
         os.remove(audio_filename)
+    if os.path.exists('tts-tmp'):
+        clear_folder('tts-tmp')
 
 
-def get_characters(most_common: List):
-    characters = {Character.PHOENIX: most_common[0]}
-    if len(most_common) > 0:
-        characters[Character.EDGEWORTH] = most_common[1]
-        for character in most_common[2:]:
-            #         rnd_characters = rnd_prosecutors if len(set(rnd_prosecutors) - set(characters.keys())) > 0 else rnd_witness
-            rnd_characters = [
-                Character.GODOT,
-                Character.FRANZISKA,
-                Character.JUDGE,
-                Character.LARRY,
-                Character.MAYA,
-                Character.KARMA,
-                Character.PAYNE,
-                Character.MAGGEY,
-                Character.PEARL,
-                Character.LOTTA,
-                Character.GUMSHOE,
-                Character.GROSSBERG,
-            ]
-            rnd_character = random.choice(
-                list(
-                    filter(
-                        lambda character: character not in characters, rnd_characters
-                    )
-                )
-            )
-            characters[rnd_character] = character
-    return characters
+def clear_folder(dir):
+    if os.path.exists(dir):
+        for the_file in os.listdir(dir):
+            file_path = os.path.join(dir, the_file)
+            try:
+                if os.path.isfile(file_path):
+                    os.unlink(file_path)
+                else:
+                    clear_folder(file_path)
+                    os.rmdir(file_path)
+            except Exception as e:
+                print(e)
+
+
+# def get_characters(most_common: List):
+#     characters = {Character.PHOENIX: most_common[0]}
+#     if len(most_common) > 0:
+#         characters[Character.EDGEWORTH] = most_common[1]
+#         for character in most_common[2:]:
+#             #         rnd_characters = rnd_prosecutors if len(set(rnd_prosecutors) - set(characters.keys())) > 0 else rnd_witness
+#             rnd_characters = [
+#                 Character.GODOT,
+#                 Character.FRANZISKA,
+#                 Character.JUDGE,
+#                 Character.LARRY,
+#                 Character.MAYA,
+#                 Character.KARMA,
+#                 Character.PAYNE,
+#                 Character.MAGGEY,
+#                 Character.PEARL,
+#                 Character.LOTTA,
+#                 Character.GUMSHOE,
+#                 Character.GROSSBERG,
+#             ]
+#             rnd_character = random.choice(
+#                 list(
+#                     filter(
+#                         lambda character: character not in characters, rnd_characters
+#                     )
+#                 )
+#             )
+#             characters[rnd_character] = character
+#     return characters
 
 
 def comments_to_scene(comments: List[CommentBridge], name_music = "PWR", **kwargs):
@@ -452,12 +580,12 @@ def comments_to_scene(comments: List[CommentBridge], name_music = "PWR", **kwarg
                     i += 1
         character_block = []
         character = comment.character
-        main_emotion = random.choice(constants.character_emotions[character]["neutral"])
+        main_emotion = random.choice(character_emotions[character]["neutral"])
         if polarity == '-' or comment.score < 0:
-            main_emotion = random.choice(constants.character_emotions[character]["sad"])
+            main_emotion = random.choice(character_emotions[character]["sad"])
         elif polarity == '+':
-            main_emotion = random.choice(constants.character_emotions[character]["happy"])
-        # For each sentence we temporarily store it in character_block
+            main_emotion = random.choice(character_emotions[character]["happy"])
+        # For each sentence we temporaly store it in character_block
         for idx, chunk in enumerate(joined_sentences):
             character_block.append(
                 {
@@ -485,20 +613,20 @@ def comments_to_scene(comments: List[CommentBridge], name_music = "PWR", **kwarg
             scene_objs.append(
                 {
                     "character": character_block[0]["character"],
-                    "action": constants.Action.OBJECTION,
+                    "action": Action.OBJECTION,
                 }
             )
             new_audio = 'music/' + name_music + '/press'
             if last_audio != new_audio:
                 last_audio = new_audio
                 change_audio = True
-
+            
         for obj in character_block:
             # We insert the data in the character block in the definitive scene object
             scene_objs.append(
                 {
                     "character": obj["character"],
-                    "action": constants.Action.TEXT,
+                    "action": Action.TEXT,
                     "emotion": obj["emotion"],
                     "text": obj["text"],
                     "name": obj["name"],
@@ -507,11 +635,12 @@ def comments_to_scene(comments: List[CommentBridge], name_music = "PWR", **kwarg
             )
         # One scene may have several sub-scenes. I.e: A scene may have an objection followed by text
         formatted_scene = {
-            "location": constants.character_location_map[character_block[0]["character"]],
+            "location": character_location_map[character_block[0]["character"]],
             "scene": scene_objs,
         }
         if change_audio:
             formatted_scene["audio"] = last_audio
             change_audio = False
         formatted_scenes.append(formatted_scene)
+        # print('====',formatted_scenes)
     ace_attorney_anim(formatted_scenes, **kwargs)

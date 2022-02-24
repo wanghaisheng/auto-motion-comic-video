@@ -1,4 +1,4 @@
-from constants import Character
+from .constants import Character
 import random
 from collections import Counter
 import os
@@ -7,9 +7,9 @@ import zipfile
 
 
 def ensure_assets_are_available():
-    if not os.path.exists('assets') or not os.listdir('assets'):
+    if not os.path.exists('assets'):
         print('Assets not present. Downloading them')
-        response = requests.get('https://dl.luismayo.com/assets.zip')
+        response = requests.get('https://drive.google.com/file/d/1hQ5MTPxjom_E6mqyJO_ppNrhFp_c4PYx/view?usp=sharing')
         with open('assets.zip', 'wb') as file:
             file.write(response.content)
         with zipfile.ZipFile('assets.zip', 'r') as zip_ref:
@@ -19,6 +19,7 @@ def ensure_assets_are_available():
 def get_characters(common: Counter):
     users_to_characters = {}
     most_common =  [t[0] for t in common.most_common()]
+    print('most_common',type(most_common),most_common)
     all_rnd_characters = [
         Character.GODOT,
         Character.FRANZISKA,

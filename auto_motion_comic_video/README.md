@@ -1,8 +1,3 @@
-## 动态漫画自动生成引擎    
-
-download assets from [google drive](https://drive.google.com/file/d/1hQ5MTPxjom_E6mqyJO_ppNrhFp_c4PYx/view?usp=sharing)
-
-
 ## Objection! rendering engine 👨🏼‍⚖️
 
 Code that allows you to convert chains of comments into ace attorney scenes. It's meant to be used by bots or other apps.

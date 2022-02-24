@@ -1,12 +1,12 @@
 import random
 from typing import List
-from utils import get_characters
-from beans.comment_bridge import CommentBridge
-from beans.comment import Comment
+from .utils import get_characters
+from .comment_bridge import CommentBridge
+from .comment import Comment
 from collections import Counter
-import anim
+from .anim import *
 import os
-from utils import ensure_assets_are_available
+from .utils import ensure_assets_are_available
 
 
 def render_comment_list(comment_list: List[Comment], output_filename = 'hello.mp4', music_code = 'PWR'):
@@ -16,13 +16,15 @@ def render_comment_list(comment_list: List[Comment], output_filename = 'hello.mp
     thread = []
     for comment in comment_list:
         counter.update({comment.effective_user_id: 1})
+    # print('counter-===',counter,type(counter))
     characters = get_characters(counter)
+    # print(characters)
     for comment in comment_list:
         comment.character = characters[comment.effective_user_id]
         thread.append(CommentBridge(comment))
     if (output_filename[-4:] != '.mp4'):
         output_filename += '.mp4'
-    return anim.comments_to_scene(thread, name_music = music_code, output_filename=output_filename)
+    return comments_to_scene(thread, name_music = music_code, output_filename=output_filename)
 
 def process_music_code(music_code):
     music_code = music_code.lower()

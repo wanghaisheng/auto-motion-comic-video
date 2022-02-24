@@ -1,6 +1,6 @@
 # Ignore the .refresh_token.txt file as it is personal for the reddit user
 .refresh_token.txt
-
+event_log.txt
 # Ignore __pycache__
 __pycache__/
 
@@ -9,5 +9,10 @@ db.json
 
 # Ignore the assets
 assets/
+build/
+dist/
+auto_motion_comic_video.egg-info/
+
+tts-tmp/
 *.mp4
 .wakatime-project
