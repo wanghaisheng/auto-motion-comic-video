@@ -13,3 +13,5 @@ https://github.com/explosion/spacy-models/releases/download/xx_ent_wiki_sm-2.3.0
 google-cloud-translate==2.0.1
 opencv-python
 fonttools
+fasttext
+pybind11

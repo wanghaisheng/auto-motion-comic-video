@@ -7,7 +7,7 @@ import zipfile
 
 
 def ensure_assets_are_available():
-    if not os.path.exists('assets'):
+    if not os.path.exists('./assets'):
         print('Assets not present. Downloading them')
         response = requests.get('https://drive.google.com/file/d/1hQ5MTPxjom_E6mqyJO_ppNrhFp_c4PYx/view?usp=sharing')
         with open('assets.zip', 'wb') as file:
@@ -19,7 +19,7 @@ def ensure_assets_are_available():
 def get_characters(common: Counter):
     users_to_characters = {}
     most_common =  [t[0] for t in common.most_common()]
-    print('most_common',type(most_common),most_common)
+    # print('most_common',type(most_common),most_common)
     all_rnd_characters = [
         Character.GODOT,
         Character.FRANZISKA,
@@ -57,13 +57,29 @@ def get_characters(common: Counter):
 
 def get_all_music_available():
     ensure_assets_are_available()
-    available_music = os.listdir('assets/music')
+    available_music = os.listdir('./assets/music')
     available_music.append('rnd')
     return available_music
 
 def is_music_available(music: str) -> bool:
     music = music.lower()
     ensure_assets_are_available()
-    available_music = os.listdir('assets/music')
+    available_music = os.listdir('./assets/music')
     available_music.append('rnd')
     return music in available_music
+def url_ok(url):
+
+
+    try:
+        response = requests.head(url)
+    except Exception as e:
+        # print(f"NOT OK: {str(e)}")
+        return False
+    else:
+        if response.status_code == 200:
+            # print("OK")
+            return True
+        else:
+            print(f"NOT OK: HTTP response code {response.status_code}")
+
+            return False   

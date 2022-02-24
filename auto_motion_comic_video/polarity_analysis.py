@@ -1,5 +1,7 @@
 polyglot_available = True
+from charset_normalizer import detect
 from google.cloud import translate_v2 as translate
+
 try:
     from polyglot.detect import Detector
     from polyglot.detect.base import UnknownLanguage
@@ -11,17 +13,68 @@ from textblob import TextBlob
 from collections import Counter
 import random
 import os
-
+from .utils import url_ok
+from .language_detect import prediction
+import langid
 class Analizer:
     def __init__(self):
         self.official_api = True
         self.language_counter = Counter()
+        if url_ok('http://www.google.com'):
+            print('network is fine,there is no need for proxy ')
+            try:
+                self.translate_client = translate.Client()
+            except Exception as e:
+                print('Warning! Translator couldn\'t be initialized, fallbacking to unofficial translation engine: ' + str(e))
+                self.official_api = False            
+        else:
+            print('google can not be access ')        
+            self.official_api = False            
+
+    def get_sentiment_offline(self,text):
+        if len(os.getenv('oe_bypass_sentiment', '')) > 0:
+            return 'N'
         try:
-            self.translate_client = translate.Client()
+            print('==========sentiment analysis==========')
+            language = prediction(text)
+            print('language detecting result:',language,'\n original:',text)
+            if not language =='en':
+                language =langid.classify(text)[0]
+# Arabic
+# English
+# Farsi
+# French
+# German
+# Khmer
+# Kurmanci (Kurdish)
+# Mandarin
+# Russian
+# Sorani (Kurdish)
+# Spanish
+# Turkish
+
+            self.language_counter.update({language: 1})
+            # print(self.language_counter)
+            
+            if (language == 'English' or language =='en'):
+                return self.proccess_eng(text)
+
+            if (language == 'google'):
+                return self.process_google(text)
+            
+            try:
+                return self.process_poly(text)
+            except ZeroDivisionError:
+                return 'N'
+            except Exception as e:
+                print(e)
+                return self.process_google(text)
         except Exception as e:
-            print('Warning! Translator couldn\'t be initialized, fallbacking to unofficial translation engine: ' + str(e))
-            self.official_api = False
-    
+            print(e)
+            return self.proccess_eng(text)
+        
+
+
     def get_sentiment(self, text):
         if len(os.getenv('oe_bypass_sentiment', '')) > 0:
             return 'N'
@@ -66,6 +119,7 @@ class Analizer:
 
     
     def proccess_eng(self, text):
+
         blob = TextBlob(text)
         if (blob.sentiment.polarity > 0.05):
             return '+'

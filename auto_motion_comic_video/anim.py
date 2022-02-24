@@ -22,6 +22,7 @@ from .polarity_analysis import Analizer
 analizer = Analizer()
 from .img import AnimImg
 from .text import AnimText
+from .ttstool import *
 from .scene import AnimScene
 from .video import AnimVideo
 from .constants import *
@@ -326,85 +327,7 @@ def do_video(config: List[Dict], output_filename):
     return sound_effects
 
 
-proxies = {
-    'http': 'socks5://127.0.0.1:1080',
-    'https': 'socks5://127.0.0.1:1080'
-}
 
-def ttsmp3_polly_tts(text, character_name,ttsdir,index):
-    # print('tts',text)
-    
-# Add a break
-# Mary had a little lamb <break time="1s"/> Whose fleece was white as snow.
-# Emphasizing words
-# I already told you I <emphasis level="strong">really like </emphasis> that person. 
-    TTSMP3_URL = "https://ttsmp3.com/makemp3_new.php"
-    character_idlist=[]
-    AllowedVoiceList_en=["Justin","Salli","Ivy","Kendra","Matthew","Joanna",
-    "Russell", "Nicole", "Amy", "Brian", "Emma", "Aditi", "Raveena",
-                        "Aria", "Joey", "Kimberly"]
-
-    mapping = {"PHOENIX":'Russell',
-"EDGEWORTH":'Geraint',
-"GODOT":'Joey',
-"FRANZISKA":'Salli',
-"JUDGE":'Brian',
-"LARRY":'Joey',
-"MAYA":'Raveena',
-"KARMA":'Brian',
-"PAYNE":'Geraint',
-"MAGGEY":'Aditi',
-"PEARL":'Joanna',
-"LOTTA":'Emma',
-"GUMSHOE":'Matthew',
-"GROSSBERG":'Matthew',
-"APOLLO":'Russell',
-"KLAVIER":'Brian',
-"MIA":'Aria',
-"WILL":'Russell',
-"OLDBAG":'Ayanda',
-"REDD":'Russell'}
-    if character_name not in character_idlist:
-        character_idlist.append(character_name)
-    # userid=character_idlist.index(character_name)   
-    accent_name=mapping[character_name.upper()]
-    if not accent_name or accent_name=="":
-        accent_name = 'Brian'
-    form_data = {
-        "msg": text,
-        "lang": accent_name,
-        "source": "ttsmp3"
-    }
-    r = requests.post(TTSMP3_URL, form_data, proxies=proxies)
-    if r.status_code == 200:
-        # print(r.status_code)
-        json = r.json()
-        # print(json)
-        url = json["URL"]
-        filename = json["MP3"]
-        mp3_file = requests.get(url, proxies=proxies)
-        # path = f"{AUDIO_PATH}{filename}"
-        # time.sleep(2)
-
-        outputdir = ttsdir+os.sep+str(index)
-        outputfilepath = outputdir+os.sep+str(index)+'.mp3'
-        if os.path.exists(outputdir):
-
-            print('sound directory exists', outputdir)
-        else:
-            os.makedirs(outputdir, exist_ok=True)
-            print('create sound directory', outputdir)
-        # print('tts', index, '----', outputfilepath)
-
-        with open(outputfilepath, "wb") as out_file:
-            out_file.write(mp3_file.content)
-
-            print('ttsmp3 ok', outputfilepath)
-        return outputfilepath
-        # return mp3_file.content
-    else:
-        print('pls choose another tts tool')
-        return False
 
 def do_audio(sound_effects: List[Dict], output_filename):
     audio_se = AudioSegment.empty()
@@ -430,8 +353,9 @@ def do_audio(sound_effects: List[Dict], output_filename):
 
             # synthentic_audio_fakeyou
             index=0
-            print('tts processing:',obj["text"],obj["character"],'./tts-tmp',index)
-            audio_se += blink + AudioSegment.from_mp3(ttsmp3_polly_tts(obj["text"],obj["character"],'./tts-tmp',index))
+            print('tts processing:',obj["text"],obj["character"],'tts-tmp',index)
+            ttsfile  = ttsmp3_polly_tts(obj["text"],obj["character"],'tts-tmp',index)
+            audio_se += blink + AudioSegment.from_mp3(ttsfile)
             index =index +1
             # audio_se += blink + long_bip[: max(int(obj["length"] * spf - len(blink)), 0)]
 
@@ -560,7 +484,7 @@ def clear_folder(dir):
 def comments_to_scene(comments: List[CommentBridge], name_music = "PWR", **kwargs):
     scene = []
     for comment in comments:
-        polarity = analizer.get_sentiment(comment.body)
+        polarity = analizer.get_sentiment_offline(comment.body)
         tokens = nlp(comment.body)
         sentences = [sent.string.strip() for sent in tokens.sents]
         joined_sentences = []

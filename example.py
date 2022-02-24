@@ -3,7 +3,9 @@
 # import anim
 from collections import Counter
 
-from auto_motion_comic_video import *
+from auto_motion_comic_video.anim import *
+from auto_motion_comic_video.renderer import *
+from auto_motion_comic_video.comment import *
 comments = [
     Comment(user_name = 'a', text_content='Hello as I am the most common I will be Phoenix'),
     Comment(user_name = 'b', text_content='wassup I\'m edgyboy', user_id='id1'),
