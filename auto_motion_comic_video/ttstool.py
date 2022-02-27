@@ -24,7 +24,14 @@ from pathlib import Path
 import glob
 import platform
 import random
+
+from .constants import *
 from .language_detect import prediction
+from json import loads, dumps
+import langid
+
+#https://lazypy.ro/tts/
+
 # Make the Pool of workers
 regexpatternforurl=r"((?<=[^a-zA-Z0-9])(?:https?\:\/\/|[a-zA-Z0-9]{1,}\.{1}|\b)(?:\w{1,}\.{1}){1,5}(?:com|org|edu|gov|uk|net|ca|de|jp|fr|au|us|ru|ch|it|nl|se|no|es|mil|iq|io|ac|ly|sm){1}(?:\/[a-zA-Z0-9]{1,})*)"
 
@@ -116,26 +123,8 @@ proxies = {
     'https': 'socks5://127.0.0.1:1080'
 }
 
-supported_languages = { # as defined here: http://msdn.microsoft.com/en-us/library/hh456380.aspx
-  'da' : 'Danish',
-  'nl' : 'Dutch',
-  'en' : 'English',
-  'fr' : 'French',
-  'de' : 'German',
-  'it' : 'Italian',
-  'is' : 'Iceland',
-  'no' : 'Norwegian',
-  'pt' : 'Portuguese',
-  'ru' : 'Russian',
-  'es' : 'Spanish',
-  'sv' : 'Swedish',
-  'tr' : 'Turkish',
-  'ro' : 'Romanian',
-  'ja' : 'Japanese',
-  'pl' : 'Polish',
-}
 
-#polly voice name map 
+#preferred voice name map 
 male_languages = { 
   'da' : 'Mads',
   'nl' : 'Ruben',
@@ -172,42 +161,12 @@ female_languages = {
   'ro' : 'Carmen',
   'ja' : 'Mizuki',
   'pl' : 'Ewa',
+
 }
 
-def ttsmp3_polly_tts(text, character_name,ttsdir,index):
-    # print('tts',text)
-    
-
-# Add a break
-# Mary had a little lamb <break time="1s"/> Whose fleece was white as snow.
-# Emphasizing words
-# I already told you I <emphasis level="strong">really like </emphasis> that person. 
-    TTSMP3_URL = "https://ttsmp3.com/makemp3_new.php"
-
-    print('======which language text is to tts=====\n',text)
-    language = prediction(text)
-    if language=='en':
-        pass
-    elif language=='fr':
-        pass
+def tts_choice(text, character_name,ttsdir,index,tool):
     character_idlist=[]
-    AllowedVoiceList_zh = [
-                        "Zeina", "Zhiyu", "Naja", "Mads", "Lotte", "Ruben",
-                        "Nicole", "Russell", "Amy", "Emma", "Brian", "Aditi", "Raveena",
-                        "Ivy", "Joanna", "Kendra", "Kimberly", "Salli", "Joey", "Justin",
-                        "Matthew", "Geraint", "Celine", "Mathieu", "Chantal", "Marlene",
-                        "Vicki", "Hans", "Dora", "Karl", "Carla", "Bianca", "Giorgio",
-                        "Mizuki", "Takumi", "Seoyeon", "Liv", "Ewa", "Maja", "Jacek", "Jan",
-                        "Vitoria", "Ricardo", "Ines", "Cristiano", "Carmen", "Tatyana", "Maxim",
-                        "Conchita", "Lucia", "Enrique", "Mia", "Penelope", "Miguel", "Astrid", "Filiz",
-                        "Gwyneth"
-                        ]   
-
-    AllowedVoiceList_en=["Justin","Salli","Ivy","Kendra","Matthew","Joanna",
-    "Russell", "Nicole", "Amy", "Brian", "Emma", "Aditi", "Raveena",
-                        "Aria", "Joey", "Kimberly"]
-
-    mapping = {"PHOENIX":'Russell',
+    polly_mapping = {"PHOENIX":'Justin',
 "EDGEWORTH":'Geraint',
 "GODOT":'Joey',
 "FRANZISKA":'Salli',
@@ -225,12 +184,153 @@ def ttsmp3_polly_tts(text, character_name,ttsdir,index):
 "KLAVIER":'Brian',
 "MIA":'Aria',
 "WILL":'Russell',
-"OLDBAG":'Ayanda',
+"OLDBAG":'Aria',
 "REDD":'Russell'}
-    if character_name not in character_idlist:
-        character_idlist.append(character_name)
-    # userid=character_idlist.index(character_name)   
-    accent_name=mapping[character_name.upper()]
+    chracter2accent={}
+    # tts text language detect and engine select
+    lang = prediction(text).strip()
+    print('language detecting result:',lang,'\n original:',text)
+    if not lang in supported_languages:
+        lang =langid.classify(text)[0]     
+    short_lang= lang
+    # 非常规语言暂时不支持
+    if not lang in supported_languages:
+        return None
+    lang =supported_languages[lang]
+    tool_accents = [x for x in ttsvoicelist if x['tool'] == tool]
+    tool_lang_accents = [x for x in tool_accents if x['lang'] == lang]
+    if tool=='polly':
+        print('character name before',short_lang,short_lang in ['zh','kr','tr','ar','ro','no','sv'])
+        if short_lang in ['zh','kr','tr','ar','ro','no','sv'] and character_name.upper() in ace_male_character_list:
+            print('there is only 1 voice for zh,kr,tr,ar,ro,no,sv ',)
+            character_name= random.choice(ace_female_character_list)   
+        if short_lang in ['tr'] and character_name.upper() in ace_female_character_list:
+            character_name= random.choice(ace_male_character_list)        
+        if not character_name.upper() in chracter2accent:
+            print('character name After',character_name)
+            if character_name.upper() in ace_female_character_list:
+                polly_lang_accents_female =[x for x in tool_lang_accents if x['gender'] == 'female']
+                print('candidates accents polly female:',polly_lang_accents_female,'\n',tool_lang_accents)
+
+                accent_name =random.choice(polly_lang_accents_female)['accent']
+
+            elif  character_name.upper() in ace_male_character_list:
+                polly_lang_accents_male =[x for x in tool_lang_accents if x['gender'] == 'male']
+                print('candidates accents polly male:',polly_lang_accents_male,'\n',tool_lang_accents)
+                accent_name =random.choice(polly_lang_accents_male)['accent']
+            else:
+                accent_name =random.choice(tool_lang_accents)['accent']
+                print('===========1,accent_name',accent_name)
+            chracter2accent[character_name]=accent_name
+        else:
+            accent_name=chracter2accent[character_name].upper()
+        ttsfile = streamlabs_polly_tts(text, accent_name,ttsdir,index)              
+    elif tool=='ibm':
+        print('character name After',character_name)
+
+        if short_lang in ['jp','it','pt'] and character_name.upper() in ace_male_character_list:
+            character_name= random.choice(ace_female_character_list)   
+        if short_lang in ['ar'] and character_name.upper() in ace_female_character_list:
+            character_name= random.choice(ace_male_character_list)         
+        print('character name After',character_name)
+           
+        if not character_name.upper() in chracter2accent:
+
+            if character_name.upper() in ace_female_character_list:
+
+                ibm_lang_accents_female =[x for x in tool_lang_accents if x['gender'] == 'female']
+                print('candidates accents ibm female:',ibm_lang_accents_female,'\n',tool_lang_accents)
+
+                accent_name =random.choice(ibm_lang_accents_female)['accent']
+
+            elif  character_name.upper() in ace_male_character_list:
+                ibm_lang_accents_male =[x for x in tool_lang_accents if x['gender'] == 'male']
+                print('candidates accents ibm male:',ibm_lang_accents_male,'\n',tool_lang_accents)
+
+                accent_name =random.choice(ibm_lang_accents_male)['accent']
+            else:
+                accent_name =random.choice(tool_lang_accents)['accent']
+                print('===========1,accent_name',accent_name)
+            chracter2accent[character_name]=accent_name
+        else:
+            accent_name=chracter2accent[character_name].upper()
+        ttsfile = lazypy_ibm_tts(text, accent_name,ttsdir,index,short_lang)                
+    else:
+        print('tts tool ',tool,' not supported yet')        
+    
+    return ttsfile
+def lazypy_ibm_tts(text, character_name,ttsdir,index,short_lang):
+    TTSMP3_URL = "https://lazypy.ro/tts/proxy.php"
+    
+
+    print('======which language text is to tts=====\n',text,'\n',character_name)
+    voice = ''
+    if not character_name or character_name=="":
+        pass
+    else:
+        if character_name in ["Allison" ,"Emily" ,"Henry" ,"Kevin","Lisa" ,"Michael" ,"Olivia" ]:
+            voice ='en'+'-'+'US'.upper()+'_'+character_name+'V3Voice'
+        elif character_name in ["Charlotte","James","Kate"]:
+            voice ='en'+'-'+'GB'.upper()+'_'+character_name+'V3Voice'
+        elif character_name in ["LiNa","WangWei","ZhangJing"]:
+            voice ='zh'+'-'+'CN'.upper()+'_'+character_name+'V3Voice'
+        elif character_name in ["Sofia"]:
+            voice ='es'+'-'+'US'.upper()+'_'+character_name+'V3Voice'         
+        elif character_name in ["Enrique","Laura"]:
+            voice ='es'+'-'+'Enrique'.upper()+'_'+character_name+'V3Voice'
+        elif character_name in ["Renee","Nicolas"]:
+            voice ='es'+'-'+'Enrique'.upper()+'_'+character_name+'V3Voice'
+        else:
+            voice =short_lang+'-'+short_lang.upper()+'_'+character_name+'V3Voice'
+    form_data = {
+        "text": text,
+        "voice": voice,
+        "service": "IBM Watson"
+    }
+    print('===choose voice name====',voice)
+    r = requests.post(TTSMP3_URL, form_data, proxies=proxies)
+    if r.status_code == 200:
+        print('ibm tts status',r.status_code)
+        json = r.json()
+        try:
+            url = json["speak_url"]
+            success = json["success"]
+            print('ibm mp3 url',url,type(success))
+
+            if success=="true" or success=="True" or success==True:
+
+                mp3_file = requests.get(url, proxies=proxies)
+                outputdir = ttsdir
+                outputfilepath = outputdir+os.sep+str(index)+'.mp3'
+                if os.path.exists(outputdir):
+
+                    print('sound directory exists', outputdir)
+                else:
+                    os.makedirs(outputdir, exist_ok=True)
+                    print('create sound directory', outputdir)
+                # print('tts', index, '----', outputfilepath)
+
+                with open(outputfilepath, "wb") as out_file:
+                    out_file.write(mp3_file.content)
+
+                    print('ibm tts ok', outputfilepath)
+                return outputfilepath
+            else:
+                print('ibm plan b is not implemented yet')
+
+        # return mp3_file.content
+        except:
+            print('we can not access lazypy.ro ibm waston tts,pls choose another tts tool')
+            print('to do implement')
+def ttsmp3_polly_tts(text, accent_name,ttsdir,index):
+    # print('tts',text)
+# Add a break
+# Mary had a little lamb <break time="1s"/> Whose fleece was white as snow.
+# Emphasizing words
+# I already told you I <emphasis level="strong">really like </emphasis> that person. 
+    TTSMP3_URL = "https://ttsmp3.com/makemp3_new.php"
+
+    print('======which language text is to tts=====\n',text,'\n',accent_name)
     if not accent_name or accent_name=="":
         accent_name = 'Brian'
     form_data = {
@@ -238,6 +338,7 @@ def ttsmp3_polly_tts(text, character_name,ttsdir,index):
         "lang": accent_name,
         "source": "ttsmp3"
     }
+    print('===choose voice name====',accent_name)
     r = requests.post(TTSMP3_URL, form_data, proxies=proxies)
     if r.status_code == 200:
         # print(r.status_code)
@@ -265,18 +366,84 @@ def ttsmp3_polly_tts(text, character_name,ttsdir,index):
             return outputfilepath
         # return mp3_file.content
         except:
-            print('pls choose another tts tool')
-            outputfilepath = synthentic_audio_ttstool(text, character_name,ttsdir,index)
-            return outputfilepath   
+            print('https://ttsmp3.com  polly tts not accessible,pls choose another tts tool')
+            outputfilepath = streamlabs_polly_tts(text, accent_name,ttsdir,index)
+            print('ttsmp3 result',outputfilepath)
+            if not outputfilepath ==None and os.path.exists(outputfilepath):
+
+                return outputfilepath
+            else:
+                return synthentic_audio_ttstool(text,accent_name,index,ttsdir)    
     else:
-        print('pls choose another tts tool')
-        outputfilepath = synthentic_audio_ttstool(text, character_name,ttsdir,index)
-        return outputfilepath
-def synthentic_audio_ttstool(text, character_name,ttsdir,index):
+        print('https://ttsmp3.com polly tts not accessible,status not 200 pls choose another tts tool')
+        outputfilepath = streamlabs_polly_tts(text, accent_name,ttsdir,index)
+        if os.path.exists(outputfilepath):
+
+            return outputfilepath
+        else:
+            return synthentic_audio_ttstool(text,accent_name,index,ttsdir)    
+
+def streamlabs_polly_tts(text, accent_name,ttsdir,index):
+    outputdir = ttsdir
+    mp3outputfilepath = outputdir+os.sep+str(index)+'.mp3'    
+    if accent_name in ['Ayanda','Aria']:
+        accent_name ='Emma'
+    temp = {'text': text, 'voice': accent_name}
+    json_dump = dumps(temp)
+    print('===streamlabs tts start==',accent_name,'====',text)
+    if ttsdir is None:
+        directory = './'
+
+    try:
+        url = 'https://streamlabs.com/polly/speak'
+        headers = {'Accept': 'application/json', 'Content-Type': 'application/json'}
+        r = requests.post(url, data=json_dump, headers=headers,proxies=proxies)
+        # print('streamlab results',r.text)
+        if r.status_code == 200:
+            resp = requests.get(loads(r.text)['speak_url'],proxies=proxies)
+            if resp.status_code == 200:
+                with open(mp3outputfilepath, 'wb') as f:
+                    f.write(resp.content)
+                print('streamlabs polly  tts file for ',str(index),'is done')
+                if os.path.exists(mp3outputfilepath) and  os.path.getsize(mp3outputfilepath)>0:
+
+                    return mp3outputfilepath
+                else:
+                    return streamelements_polly_tts(text, accent_name, index, ttsdir)
+
+            print(f'Could not download clip: Response-{r.status_code}')
+            print('last try steamelements')
+            return streamelements_polly_tts(text, accent_name, index, ttsdir)
+        print(f'Could not download clip: Response-{r.status_code}')
+        return streamelements_polly_tts(text, accent_name, index, ttsdir)
+    except Exception as e:
+        print(e)
+        print('last try streamelements')
+
+        return streamelements_polly_tts(text, accent_name, index, ttsdir)
+
+def streamelements_polly_tts(text, accent_name, index, ttsdir):
+    outputdir = ttsdir
+    mp3outputfilepath = outputdir+os.sep+str(index)+'.mp3'  
+    tts = requests.get("https://api.streamelements.com/kappa/v2/speech?voice="+accent_name+"&text=%s" % text)
+    with open(mp3outputfilepath, "wb") as f:
+        f.write(tts.content)
+    if os.path.exists(mp3outputfilepath) and  os.path.getsize(mp3outputfilepath)>0:
+
+        return mp3outputfilepath
+    else:
+        outputfilepath = ttsmp3_polly_tts(text, accent_name,ttsdir,index)
+        print('ttsmp3 result',outputfilepath)
+        if not outputfilepath ==None and os.path.exists(outputfilepath):
+
+            return outputfilepath
+        else:
+            return synthentic_audio_ttstool(text,accent_name,index,ttsdir)       
+def synthentic_audio_ttstool(text, character_name, index, ttsdir):
     # dir = r'D:\Download\audio-visual\auto_video-jigsaw\tts\readaloud'
     try:
         web_driver = getwebdriver_chrome()
-        
+        print('====initiliaze webdriver=====')
         url = 'https://ttstool.com/'
         out = web_driver.get(url)
         # print('========',out)
@@ -298,6 +465,8 @@ def synthentic_audio_ttstool(text, character_name,ttsdir,index):
             "//table[1]/tbody/tr[1]/td[2]/select"))
 
         # select by visible text
+        print('====choose amazon or microsoft=====')
+
         select_tool.select_by_visible_text('Amazon')
 
         while not web_driver.find_element_by_xpath("//table[1]/tbody/tr[2]/td[2]/select") :
@@ -311,7 +480,7 @@ def synthentic_audio_ttstool(text, character_name,ttsdir,index):
         select_language = Select(web_driver.find_element_by_xpath(
             " /html/body/div[1]/table[1]/tbody/tr[2]/td[2]/select"))
         # /html/body/div[1]/table[1]/tbody/tr[2]/td[2]/select
-        # print('11111',select_language)
+        print('====select voice=====')
         # select_language.select_by_visible_text('English')
         select_language.select_by_value('English')
         wait = WebDriverWait(web_driver, 10)

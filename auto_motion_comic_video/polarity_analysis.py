@@ -38,20 +38,8 @@ class Analizer:
             print('==========sentiment analysis==========')
             language = prediction(text)
             print('language detecting result:',language,'\n original:',text)
-            if not language =='en':
-                language =langid.classify(text)[0]
-# Arabic
-# English
-# Farsi
-# French
-# German
-# Khmer
-# Kurmanci (Kurdish)
-# Mandarin
-# Russian
-# Sorani (Kurdish)
-# Spanish
-# Turkish
+            # if not language =='en':
+            #     language =langid.classify(text)[0]
 
             self.language_counter.update({language: 1})
             # print(self.language_counter)
@@ -81,8 +69,12 @@ class Analizer:
         try:
             try:
                 if (polyglot_available):
-                    detector = Detector(text)
-                    language = detector.language.code
+                    # detector = Detector(text)
+                    # language = detector.language.code
+                    language = prediction(text)
+                    # print('language detecting result:',language,'\n original:',text)
+                    # if not language =='en':
+                    #     language =langid.classify(text)[0]                    
                 else:
                     language = self.detect_language_heuristic(text)
             except UnknownLanguage:

@@ -1,14 +1,16 @@
 from typing import Dict
 from PIL import Image, ImageDraw, ImageFont
 from fontTools.ttLib import TTFont
+from .language_detect import prediction
 
 class AnimText:
     font_array = [
         # AA-Like > Pixel > Generic
         # AA-like, Latin, hiragana, katakana, (part of) cyrillic
+        {'path': './assets/igiari/Galmuri11.ttf'},
+
         {'path': './assets/igiari/Igiari.ttf'},
         # AA-like, Latin, hiragana, katakana, (part of) cyrillic
-        {'path': './assets/igiari/Galmuri11.ttf'},
         # Pixel, Kanji, Hiragana, Katakana
         {'path':'./assets/igiari/jackeyfont.ttf'},
         #handwirrten-chinese
@@ -49,6 +51,9 @@ class AnimText:
     def render(self, background: Image, frame: int = 0):
         draw = ImageDraw.Draw(background)
         _text = self.text
+        # 根据文字语言选择相应的字体
+        lang = prediction(_text)
+
         if self.typewriter_effect:
             _text = _text[:frame]
         if self.font_path is not None:

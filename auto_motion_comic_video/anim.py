@@ -1,5 +1,7 @@
 import imp
 from math import ceil
+
+from tomlkit import string
 from .comment_bridge import CommentBridge
 from PIL import Image, ImageDraw, ImageFont , ImageFile
 # ImageFile.LOAD_TRUNCATED_IMAGES = True
@@ -26,7 +28,10 @@ from .ttstool import *
 from .scene import AnimScene
 from .video import AnimVideo
 from .constants import *
+from .utils import *
 import requests
+import langid
+
 
 import re
 def group_words(s):
@@ -53,26 +58,29 @@ def spliteKeyWord(str):
     regex = r"[\u4e00-\ufaff]|[0-9]+|[a-zA-Z]+\'*[a-z]*"
     matches = re.findall(regex, str, re.UNICODE)
     return matches
-def split_str_into_newlines(text: str,font_path,font_size):
+
+def split_str_into_newlines(text: str,font_path,font_size,scene_line_character_fontspace_limit:int =240):
     font = ImageFont.truetype(font_path, font_size)
     image_size = font.getsize(text=text)
-    text=spliteKeyWord(text)
-    text=' '.join(text)
+    if prediction(text) in ['zh','jp']:
+        text=spliteKeyWord(text)
+        text=' '.join(text)
     words = text.split(" ")
+    print('now scene_line_character_limit is',scene_line_character_fontspace_limit)
     new_text = ""
     for word in words:
         last_sentence = new_text.split("\n")[-1] + word + " "
         # print('00000000000000---',last_sentence,font.getsize(text=last_sentence)[0])
-        if font.getsize(text=last_sentence)[0] >= 240:
+        if font.getsize(text=last_sentence)[0] >= scene_line_character_fontspace_limit:
             new_text += "\n" + word + " "
         else:
             new_text += word + " "
-    # print('=======',new_text.encode('utf-8'))
-    return new_text
+    # print('=======new_text',new_text.strip())
+    return new_text.strip()
 
 
 # @profile
-def do_video(config: List[Dict], output_filename):
+def do_video(config: List[Dict], output_filename,scene_line_character_fontspace_limit):
     dimension =[256,192]
     scenes = []
     sound_effects = []
@@ -176,7 +184,8 @@ def do_video(config: List[Dict], output_filename):
             ):
                 character = talking_character
                 splitter_font_path = AnimText(obj["text"]).font_path
-                _text = split_str_into_newlines(obj["text"],splitter_font_path,15)
+
+                _text = split_str_into_newlines(obj["text"],splitter_font_path,15,scene_line_character_fontspace_limit)
                 # print('!!!!!!',_text)
                 # tts 
 
@@ -329,7 +338,7 @@ def do_video(config: List[Dict], output_filename):
 
 
 
-def do_audio(sound_effects: List[Dict], output_filename):
+def do_audio(sound_effects: List[Dict], output_filename,tts_enabled:bool=True,db_lounder:int=30,tts_lag:int=1000,tts_tool:string='polly'):
     audio_se = AudioSegment.empty()
     bip = AudioSegment.from_wav(
         "assets/sfx general/sfx-blipmale.wav"
@@ -349,15 +358,29 @@ def do_audio(sound_effects: List[Dict], output_filename):
         if obj["_type"] == "silence":
             audio_se += AudioSegment.silent(duration=int(obj["length"] * spf))
         elif obj["_type"] == "bip":
-            # print('00000000',obj,long_bip[: max(int(obj["length"] * spf - len(blink)), 0)])
+            if tts_enabled ==True:
+                index=0
+                print('first try tts')
+                ttsfile  = tts_choice(obj["text"],obj["character"],'tts-tmp',index,tts_tool)
+                if not ttsfile ==None and os.path.exists(ttsfile) and  os.path.getsize(ttsfile)>0:
+                    ttssound = AudioSegment.from_mp3(ttsfile)+db_lounder
+                    ttssound =AudioSegment.silent(duration=tts_lag)+ ttssound   
+                else:
+                    print('second try tts')
 
-            # synthentic_audio_fakeyou
-            index=0
-            print('tts processing:',obj["text"],obj["character"],'tts-tmp',index)
-            ttsfile  = ttsmp3_polly_tts(obj["text"],obj["character"],'tts-tmp',index)
-            audio_se += blink + AudioSegment.from_mp3(ttsfile)
-            index =index +1
-            # audio_se += blink + long_bip[: max(int(obj["length"] * spf - len(blink)), 0)]
+                    ttsfile  = tts_choice(obj["text"],obj["character"],'tts-tmp',index,tts_tool)
+                    if  ttsfile ==None or os.path.getsize(ttsfile)==0:
+                        ttssound =long_bip[: max(int(obj["length"] * spf - len(blink)), 0)]
+                    else:
+                        ttssound = AudioSegment.from_mp3(ttsfile)+db_lounder
+                        ttssound =AudioSegment.silent(duration=tts_lag)+ ttssound   
+
+                audio_se +=  blink + ttssound           
+                index =index +1
+            else:
+
+            # print('break\n',int(obj["length"]/4 * spf))
+                audio_se += blink + long_bip[: max(int(obj["length"] * spf - len(blink)), 0)]
 
         elif obj["_type"] == "objection":
             if obj["character"] == "phoenix":
@@ -368,7 +391,7 @@ def do_audio(sound_effects: List[Dict], output_filename):
                 audio_se += default_objection[: int(obj["length"] * spf)]
         elif obj["_type"] == "shock":
             audio_se += badum[: int(obj["length"] * spf)]
-    #     audio_se -= 10
+        # audio_se -= 10
     music_tracks = []
     len_counter = 0
     for obj in sound_effects:
@@ -397,15 +420,15 @@ def do_audio(sound_effects: List[Dict], output_filename):
     final_se = music_se.overlay(audio_se)
     final_se.export(output_filename, format="mp3")
 
-def ace_attorney_anim(config: List[Dict], output_filename: str = "output.mp4"):
+def ace_attorney_anim(config: List[Dict], output_filename: str = "output.mp4",scene_line_character_fontspace_limit:int=240,tts_enabled:bool =True,db_lounder: int = 30,tts_lag:int =1000,tts_tool:string ='polly'):
     root_filename = output_filename[:-4]
     audio_filename = output_filename + '.audio.mp3'
     text_filename = root_filename + '.txt'
     if os.path.exists(root_filename):
         shutil.rmtree(root_filename)
     os.mkdir(root_filename)
-    sound_effects = do_video(config, root_filename)
-    do_audio(sound_effects, audio_filename)
+    sound_effects = do_video(config, root_filename,scene_line_character_fontspace_limit)
+    do_audio(sound_effects, audio_filename,tts_enabled,db_lounder,tts_lag,tts_tool)
     videos = []
     with open(text_filename, 'w') as txt:
         for file in os.listdir(root_filename):
@@ -481,27 +504,29 @@ def clear_folder(dir):
 #     return characters
 
 
-def comments_to_scene(comments: List[CommentBridge], name_music = "PWR", **kwargs):
+def comments_to_scene(comments: List[CommentBridge], name_music = "PWR", scene_character_limit=85,**kwargs):
     scene = []
+
     for comment in comments:
+
         polarity = analizer.get_sentiment_offline(comment.body)
         tokens = nlp(comment.body)
         sentences = [sent.string.strip() for sent in tokens.sents]
-        joined_sentences = []
-        i = 0
-        while i < len(sentences):
-            sentence = sentences[i]
-            if len(sentence) > 85:
-                text_chunks = [chunk for chunk in wrap(sentence, 85)]
-                joined_sentences = [*joined_sentences, *text_chunks]
-                i += 1
-            else:
-                if i + 1 < len(sentences) and len(f"{sentence} {sentences[i+1]}") <= 85: # Maybe we can join two different sentences
-                    joined_sentences.append(sentence + " " + sentences[i+1])
-                    i += 2
-                else:
-                    joined_sentences.append(sentence)
-                    i += 1
+        joined_sentences  =format_line(comment.body,scene_character_limit)
+        # i = 0
+        # while i < len(sentences):
+        #     sentence = sentences[i]
+        #     if len(sentence) > scene_character_limit:
+        #         text_chunks = [chunk for chunk in wrap(sentence, scene_character_limit)]
+        #         joined_sentences = [*joined_sentences, *text_chunks]
+        #         i += 1
+        #     else:
+        #         if i + 1 < len(sentences) and len(f"{sentence} {sentences[i+1]}") <= scene_character_limit: # Maybe we can join two different sentences
+        #             joined_sentences.append(sentence + " " + sentences[i+1])
+        #             i += 2
+        #         else:
+        #             joined_sentences.append(sentence)
+        #             i += 1
         character_block = []
         character = comment.character
         main_emotion = random.choice(character_emotions[character]["neutral"])

@@ -10,5 +10,5 @@ def prediction(text):
     fmodel = fasttext.load_model(path_to_pretrained_model)
     return fmodel.predict([text])[0][0][0].split('__')[-1]  # ([['__label__en']], [array([0.9331119], dtype=float32)]
     
-text ="never forget about china"
-print(prediction(text))
+# text ="never forget about china"
+# print(prediction(text))
