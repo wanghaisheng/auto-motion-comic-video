@@ -39,6 +39,7 @@ class AnimText:
         self.y = y
         self.text = text
         # Used for font handling internals
+        print('error debug',text,type(text))
         self._internal_text = text.replace('\n', '').replace('\r', '').replace('\t', '')
         self.typewriter_effect = typewriter_effect
         self.font_size = font_size
@@ -52,7 +53,7 @@ class AnimText:
         draw = ImageDraw.Draw(background)
         _text = self.text
         # 根据文字语言选择相应的字体
-        lang = prediction(_text)
+        # lang = prediction(_text)
 
         if self.typewriter_effect:
             _text = _text[:frame]

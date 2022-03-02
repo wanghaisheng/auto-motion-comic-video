@@ -1,9 +1,22 @@
+import re
+from tracemalloc import start
+
+import langid
+import requests
+from .utils import *
+from .constants import *
+from .video import AnimVideo
+from .scene import AnimScene
+from .ttstool import *
+from .text import AnimText
+from .img import AnimImg
 import imp
 from math import ceil
+from .language_detect import *
 
 from tomlkit import string
 from .comment_bridge import CommentBridge
-from PIL import Image, ImageDraw, ImageFont , ImageFile
+from PIL import Image, ImageDraw, ImageFont, ImageFile
 # ImageFile.LOAD_TRUNCATED_IMAGES = True
 from matplotlib.pyplot import imshow
 import numpy as np
@@ -22,18 +35,12 @@ from textwrap import wrap
 import spacy
 from .polarity_analysis import Analizer
 analizer = Analizer()
-from .img import AnimImg
-from .text import AnimText
-from .ttstool import *
-from .scene import AnimScene
-from .video import AnimVideo
-from .constants import *
-from .utils import *
-import requests
-import langid
 
 
-import re
+
+import timeit
+
+fmodel=''
 def group_words(s):
     regex = []
 
@@ -51,45 +58,59 @@ def group_words(s):
 
     return r.findall(s)
 
+
 nlp = spacy.load("xx_ent_wiki_sm")
 nlp.add_pipe(nlp.create_pipe('sentencizer'))
 
-def spliteKeyWord(str):
-    regex = r"[\u4e00-\ufaff]|[0-9]+|[a-zA-Z]+\'*[a-z]*"
-    matches = re.findall(regex, str, re.UNICODE)
-    return matches
 
-def split_str_into_newlines(text: str,font_path,font_size,scene_line_character_fontspace_limit:int =240):
+
+
+def split_str_into_newlines(text: str, font_path, font_size,scene_line_character_fontspace_limit: int = 240):
     font = ImageFont.truetype(font_path, font_size)
     image_size = font.getsize(text=text)
-    if prediction(text) in ['zh','jp']:
-        text=spliteKeyWord(text)
-        text=' '.join(text)
-    words = text.split(" ")
-    print('now scene_line_character_limit is',scene_line_character_fontspace_limit)
     new_text = ""
-    for word in words:
-        last_sentence = new_text.split("\n")[-1] + word + " "
-        # print('00000000000000---',last_sentence,font.getsize(text=last_sentence)[0])
-        if font.getsize(text=last_sentence)[0] >= scene_line_character_fontspace_limit:
-            new_text += "\n" + word + " "
-        else:
-            new_text += word + " "
-    # print('=======new_text',new_text.strip())
-    return new_text.strip()
+    # lines = int(image_size[0]/scene_line_character_fontspace_limit)+1
+    lang =langid.classify(text)[0]
+    # results = longtext2paragraph(text,80,lang,lines)
+    # print(lines,'==scene to lines:',results)
+    # return ''.join(results)
+    if lang in ['zh', 'jp','kr']:
+        
+        text = spliteKeyWord_zh(text)
+        for word in text:
+            last_sentence = new_text.split("\n")[-1] + word
+            # print('00000000000000---',last_sentence,font.getsize(text=last_sentence)[0])
+            if font.getsize(text=last_sentence)[0] >= scene_line_character_fontspace_limit:
+                new_text += "\n" + word
+            else:
+                new_text += word
+    else:
+        # text = spliteKeyWord_en(text)
+        text =text.split(' ')
+        for word in text:
+            last_sentence = new_text.split("\n")[-1] + word + " "
+            # print('00000000000000---',last_sentence,font.getsize(text=last_sentence)[0])
+            if font.getsize(text=last_sentence)[0] >= scene_line_character_fontspace_limit:
+                new_text += "\n" + word + " "
+            else:
+                new_text += word + " "       
+    print('=======new_text', new_text.strip())
+    return new_text.strip(),lang
 
 
 # @profile
-def do_video(config: List[Dict], output_filename,scene_line_character_fontspace_limit):
-    dimension =[256,192]
+def do_video(config: List[Dict], output_filename, scene_line_character_fontspace_limit,lag_frames,fps):
+    dimension = [256, 192]
     scenes = []
     sound_effects = []
     part = 0
     for scene in config:
+        print('where is space comefrom do video')
         # We pick up the images to be rendered
         bg = AnimImg(location_map[scene["location"]])
         # print('----------------',bg.h,bg.w)
-        arrow = AnimImg("assets/arrow.png", x=235, y=170*4, w=15, h=15, key_x=5)
+        arrow = AnimImg("assets/arrow.png", x=235,
+                        y=170*4, w=15, h=15, key_x=5)
         textbox = AnimImg("assets/textbox4.png", w=bg.w)
         objection = AnimImg("assets/objection.gif")
         bench = None
@@ -102,7 +123,8 @@ def do_video(config: List[Dict], output_filename,scene_line_character_fontspace_
             bench = AnimImg("assets/witness_stand.png", w=bg.w)
             bench.y = bg.h - bench.h
         if "audio" in scene:
-            sound_effects.append({"_type": "bg", "src": f'assets/{scene["audio"]}.mp3'})
+            sound_effects.append(
+                {"_type": "bg", "src": f'assets/{scene["audio"]}.mp3'})
         current_frame = 0
         current_character_name = None
         text = None
@@ -111,9 +133,11 @@ def do_video(config: List[Dict], output_filename,scene_line_character_fontspace_
             # First we check for evidences
             if "evidence" in obj and obj['evidence'] is not None:
                 if scene["location"] == Location.COURTROOM_RIGHT:
-                    evidence = AnimImg(obj["evidence"], x=26, y=19*4, w=85, maxh=75)
+                    evidence = AnimImg(
+                        obj["evidence"], x=26, y=19*4, w=85, maxh=75)
                 else:
-                    evidence = AnimImg(obj["evidence"], x=145, y=19*4, w=85, maxh=75)
+                    evidence = AnimImg(
+                        obj["evidence"], x=145, y=19*4, w=85, maxh=75)
             else:
                 evidence = None
             if "character" in obj:
@@ -125,7 +149,7 @@ def do_video(config: List[Dict], output_filename,scene_line_character_fontspace_
                 character_name = AnimText(
                     current_character_name,
                     font_path="assets/igiari/Igiari.ttf",
-                    font_size=12*4,
+                    font_size=12*3,
                     x=4,
                     y=113*4,
                 )
@@ -139,10 +163,10 @@ def do_video(config: List[Dict], output_filename,scene_line_character_fontspace_
                     )
                 if not os.path.isfile(
                         default_path
-                        ):
-                        default_path = (
-                            f"{_dir}/{current_character_name.lower()}-normal(a).gif"
-                        )
+                ):
+                    default_path = (
+                        f"{_dir}/{current_character_name.lower()}-normal(a).gif"
+                    )
                 assert os.path.isfile(
                     default_path
                 ), f"{default_path} does not exist"
@@ -164,10 +188,10 @@ def do_video(config: List[Dict], output_filename,scene_line_character_fontspace_
                     )
                 if not os.path.isfile(
                         default_path
-                        ):
-                        default_path = (
-                            f"{_dir}/{current_character_name.lower()}-normal(a).gif"
-                        )
+                ):
+                    default_path = (
+                        f"{_dir}/{current_character_name.lower()}-normal(a).gif"
+                    )
                 assert os.path.isfile(
                     default_path
                 ), f"{default_path} does not exist"
@@ -185,66 +209,73 @@ def do_video(config: List[Dict], output_filename,scene_line_character_fontspace_
                 character = talking_character
                 splitter_font_path = AnimText(obj["text"]).font_path
 
-                _text = split_str_into_newlines(obj["text"],splitter_font_path,15,scene_line_character_fontspace_limit)
-                # print('!!!!!!',_text)
-                # tts 
-
-                _colour = None if "colour" not in obj else obj["colour"]
-                text = AnimText(
-                    _text,
-                    font_path="assets/igiari/Igiari.ttf",
-                    font_size=15*4,
-                    x=5,
-                    y=130*4,
-                    typewriter_effect=True,
-                    colour=_colour,
-                )
-                num_frames = len(_text) + lag_frames
-                _character_name = character_name
-                if "name" in obj:
-                    _character_name = AnimText(
-                        obj["name"],
+                _text,lang = split_str_into_newlines(
+                    obj["text"], splitter_font_path, 15, scene_line_character_fontspace_limit)
+                print('!!!!!!====================')
+                # tts
+                if not  _text=='&#x200B;':
+                    _colour = None if "colour" not in obj else obj["colour"]
+                    text = AnimText(
+                        _text,
                         font_path="assets/igiari/Igiari.ttf",
-                        font_size=12*4,
-                        x=4*4,
-                        y=113*4,
+                        font_size=15*3,
+                        x=5,
+                        y=130*4,
+                        typewriter_effect=True,
+                        colour=_colour,
                     )
-                if obj["action"] == Action.TEXT_SHAKE_EFFECT:
-                    bg.shake_effect = True
-                    character.shake_effect = True
-                    if bench is not None:
-                        bench.shake_effect = True
-                    textbox.shake_effect = True
-                scene_objs = list(
-                    filter(
-                        lambda x: x is not None,
-                        [bg, character, bench, textbox, _character_name, text, evidence],
+                    num_frames = len(_text) + lag_frames
+                    _character_name = character_name
+                    if "name" in obj:
+                        _character_name = AnimText(
+                            obj["name"],
+                            font_path="assets/igiari/Igiari.ttf",
+                            font_size=12*3,
+                            x=4*4,
+                            y=113*4,
+                        )
+                    if obj["action"] == Action.TEXT_SHAKE_EFFECT:
+                        bg.shake_effect = True
+                        character.shake_effect = True
+                        if bench is not None:
+                            bench.shake_effect = True
+                        textbox.shake_effect = True
+                    scene_objs = list(
+                        filter(
+                            lambda x: x is not None,
+                            [bg, character, bench, textbox,
+                                _character_name, text, evidence],
+                        )
                     )
-                )
-                scenes.append(
-                    AnimScene(scene_objs, len(_text) - 1, start_frame=current_frame)
-                )
-                # print('bip ======', len(_text) - 1)
-                sound_effects.append({"_type": "bip", "length": len(_text) - 1,"text":_text,"character":current_character_name.lower()})
-                if obj["action"] == Action.TEXT_SHAKE_EFFECT:
-                    bg.shake_effect = False
-                    character.shake_effect = False
-                    if bench is not None:
-                        bench.shake_effect = False
-                    textbox.shake_effect = False
-                text.typewriter_effect = False
-                character = default_character
-                scene_objs = list(
-                    filter(
-                        lambda x: x is not None,
-                        [bg, character, bench, textbox, _character_name, text, arrow, evidence],
+                    scenes.append(
+                        AnimScene(scene_objs, (len(_text) - 1),
+                                start_frame=current_frame)
                     )
-                )
-                scenes.append(
-                    AnimScene(scene_objs, lag_frames, start_frame=len(_text) - 1)
-                )
-                current_frame += num_frames
-                sound_effects.append({"_type": "silence", "length": lag_frames})
+                    # print('bip ======', len(_text) - 1)
+                    sound_effects.append({"_type": "bip", "length": len(
+                        _text) - 1, "text": _text, "character": current_character_name.lower(),"lang":lang})
+                    if obj["action"] == Action.TEXT_SHAKE_EFFECT:
+                        bg.shake_effect = False
+                        character.shake_effect = False
+                        if bench is not None:
+                            bench.shake_effect = False
+                        textbox.shake_effect = False
+                    text.typewriter_effect = False
+                    character = default_character
+                    scene_objs = list(
+                        filter(
+                            lambda x: x is not None,
+                            [bg, character, bench, textbox,
+                                _character_name, text, arrow, evidence],
+                        )
+                    )
+                    scenes.append(
+                        AnimScene(scene_objs, lag_frames,
+                                start_frame=len(_text) - 1)
+                    )
+                    current_frame += num_frames
+                    sound_effects.append(
+                        {"_type": "silence", "length": lag_frames})
             elif "action" in obj and obj["action"] == Action.SHAKE_EFFECT:
                 bg.shake_effect = True
                 character.shake_effect = True
@@ -272,7 +303,8 @@ def do_video(config: List[Dict], output_filename,scene_line_character_fontspace_
                 else:
                     scene_objs = [bg, character, bench]
                 scenes.append(
-                    AnimScene(scene_objs, lag_frames, start_frame=current_frame)
+                    AnimScene(scene_objs, lag_frames,
+                              start_frame=current_frame)
                 )
                 sound_effects.append({"_type": "shock", "length": lag_frames})
                 current_frame += lag_frames
@@ -289,9 +321,11 @@ def do_video(config: List[Dict], output_filename,scene_line_character_fontspace_
                 objection.shake_effect = True
                 character = default_character
                 scene_objs = list(
-                    filter(lambda x: x is not None, [bg, character, bench, objection])
+                    filter(lambda x: x is not None, [
+                           bg, character, bench, objection])
                 )
-                scenes.append(AnimScene(scene_objs, 11, start_frame=current_frame))
+                scenes.append(AnimScene(scene_objs, 18,
+                                        start_frame=current_frame))
                 bg.shake_effect = False
                 if bench is not None:
                     bench.shake_effect = False
@@ -299,7 +333,8 @@ def do_video(config: List[Dict], output_filename,scene_line_character_fontspace_
                 scene_objs = list(
                     filter(lambda x: x is not None, [bg, character, bench])
                 )
-                scenes.append(AnimScene(scene_objs, 11, start_frame=current_frame))
+                scenes.append(AnimScene(scene_objs, 11,
+                                        start_frame=current_frame))
                 sound_effects.append(
                     {
                         "_type": "objection",
@@ -312,33 +347,41 @@ def do_video(config: List[Dict], output_filename,scene_line_character_fontspace_
                 # list(filter(lambda x: x is not None, scene_objs))
                 character = default_character
                 scene_objs = list(
-                    filter(lambda x: x is not None, [bg, character, bench, evidence])
+                    filter(lambda x: x is not None, [
+                           bg, character, bench, evidence])
                 )
                 _length = lag_frames
                 if "length" in obj:
                     _length = obj["length"]
                 if "repeat" in obj:
                     character.repeat = obj["repeat"]
-                scenes.append(AnimScene(scene_objs, _length, start_frame=current_frame))
+                scenes.append(AnimScene(scene_objs, _length,
+                                        start_frame=current_frame))
                 character.repeat = True
                 sound_effects.append({"_type": "silence", "length": _length})
                 current_frame += _length
+
             if (len(scenes) > 50):
                 video = AnimVideo(scenes, fps=fps)
-                video.render(output_filename + '/' +str(part) + '.mp4')
-                part+=1
+                video.render(output_filename + '/' + str(part) + '.mp4')
+                part += 1
                 scenes = []
+# 增加替换 text tts scene时间长度的代码
+# for obj in scene["scene"]:
 
     if (len(scenes) > 0):
+        start = timeit.default_timer()
         video = AnimVideo(scenes, fps=fps)
-        video.render(output_filename + '/' +str(part) + '.mp4')
-    # print('!!!!!!',scenes)
+
+        video.render(output_filename + '/' + str(part) + '.mp4')
+        stop = timeit.default_timer()
+
+        with open('timelog.csv','a+') as f:
+            f.write('do video=='+str(part)+'-----'+str(stop-start)+'\n')
     return sound_effects
 
 
-
-
-def do_audio(sound_effects: List[Dict], output_filename,tts_enabled:bool=True,db_lounder:int=30,tts_lag:int=1000,tts_tool:string='polly'):
+def do_audio(sound_effects: List[Dict], output_filename, tts_enabled: bool = True, db_lounder: int = 30, tts_lag: int = 1000, tts_tool: string = 'polly',fps:int=18):
     audio_se = AudioSegment.empty()
     bip = AudioSegment.from_wav(
         "assets/sfx general/sfx-blipmale.wav"
@@ -354,34 +397,63 @@ def do_audio(sound_effects: List[Dict], output_filename,tts_enabled:bool=True,db
         "assets/Edgeworth - (English) objection.mp3"
     )
     default_objection = AudioSegment.from_mp3("assets/Payne - Objection.mp3")
-    for obj in sound_effects:
+    for idx,obj in enumerate(sound_effects):
         if obj["_type"] == "silence":
             audio_se += AudioSegment.silent(duration=int(obj["length"] * spf))
         elif obj["_type"] == "bip":
-            if tts_enabled ==True:
-                index=0
+            if tts_enabled == True:
                 print('first try tts')
-                ttsfile  = tts_choice(obj["text"],obj["character"],'tts-tmp',index,tts_tool)
-                if not ttsfile ==None and os.path.exists(ttsfile) and  os.path.getsize(ttsfile)>0:
-                    ttssound = AudioSegment.from_mp3(ttsfile)+db_lounder
-                    ttssound =AudioSegment.silent(duration=tts_lag)+ ttssound   
+                ttsstart = timeit.default_timer()
+                text =obj["text"]
+                print('============tts start================\n',text)
+                if text == '' or text is None:
+                    ttssound = long_bip[: max(
+                            int(obj["length"] * spf - len(blink)), 0)]                       
+
                 else:
-                    print('second try tts')
-
-                    ttsfile  = tts_choice(obj["text"],obj["character"],'tts-tmp',index,tts_tool)
-                    if  ttsfile ==None or os.path.getsize(ttsfile)==0:
-                        ttssound =long_bip[: max(int(obj["length"] * spf - len(blink)), 0)]
+                    if obj["lang"] is None  or obj["lang"]  =='':
+                        lang = prediction(TextCorrectorbeforeTTS(text),fmodel).strip()
+                        print('language detecting result:',lang,'\n original:',TextCorrectorbeforeTTS( obj["text"]))
                     else:
-                        ttssound = AudioSegment.from_mp3(ttsfile)+db_lounder
-                        ttssound =AudioSegment.silent(duration=tts_lag)+ ttssound   
+                        lang =obj["lang"] 
+                    ttsfile = tts_choice(
+                        TextCorrectorbeforeTTS( text), obj["character"], 'tts-tmp', idx, tts_tool,lang)
+                    ttssound = long_bip[: max(
+                            int(obj["length"] * spf - len(blink)), 0)]                
+                    if not ttsfile == None and os.path.exists(ttsfile) and os.path.getsize(ttsfile) > 0:
+                        try:
+                            ttssound = AudioSegment.from_mp3(ttsfile)+db_lounder
+                            # ttssound = AudioSegment.silent(duration=tts_lag) + ttssound
+                        except:
+                            print('tts file ', ttsfile, 'is corrupted')
+                            print('second try tts')
+                            ttsfile = tts_choice(
+                                obj["text"], obj["character"], 'tts-tmp', idx, tts_tool,lang)
 
-                audio_se +=  blink + ttssound           
-                index =index +1
+                    # else:
+                        # print('second try tts')
+
+                        # ttsfile = tts_choice(
+                        #     obj["text"], obj["character"], 'tts-tmp', idx, tts_tool)
+
+                    try:
+                        ttssound = AudioSegment.from_mp3(ttsfile)+db_lounder
+
+                        # ttssound = AudioSegment.silent(duration=tts_lag) + ttssound
+                        print('current '+str(idx)+'tts audio length',ttssound.duration_seconds )
+
+                    except:
+                        print('tts file ', ttsfile, 'is corrupted')
+                    ttsstop = timeit.default_timer()
+                    with open('timelog.csv','a+') as f:
+                        f.write('do tts=='+str(idx)+'-----'+str(ttsstop-ttsstart)+'\n')
+                audio_se += blink+ttssound+ AudioSegment.silent(duration=tts_lag)
             else:
 
-            # print('break\n',int(obj["length"]/4 * spf))
-                audio_se += blink + long_bip[: max(int(obj["length"] * spf - len(blink)), 0)]
-
+                # print('break\n',int(obj["length"]/4 * spf))
+                audio_se += blink + \
+                    long_bip[: max(int(obj["length"] * spf - len(blink)), 0)]
+            print('audio length',audio_se.duration_seconds )
         elif obj["_type"] == "objection":
             if obj["character"] == "phoenix":
                 audio_se += pheonix_objection[: int(obj["length"] * spf)]
@@ -406,6 +478,7 @@ def do_audio(sound_effects: List[Dict], output_filename,tts_enabled:bool=True,db
         music_tracks[-1]["length"] = len_counter
     #     print(music_tracks)
     music_se = AudioSegment.empty()
+    
     for track in music_tracks:
         loaded_audio = AudioSegment.from_mp3(track["src"])
         # Total mp3 length in seconds
@@ -417,25 +490,45 @@ def do_audio(sound_effects: List[Dict], output_filename,tts_enabled:bool=True,db
         music_se += loaded_audio[:int(needed_len * 1000)]
     #     music_se = AudioSegment.from_mp3(sound_effects[0]["src"])[:len(audio_se)]
     #     music_se -= 5
+    music_se = music_se+AudioSegment.silent(duration=(audio_se.duration_seconds-music_se.duration_seconds)*1000)    
+
+    print('music_se audio length',music_se.duration_seconds )
+
     final_se = music_se.overlay(audio_se)
+    print('final_se audio length',music_se.duration_seconds )
+
     final_se.export(output_filename, format="mp3")
 
-def ace_attorney_anim(config: List[Dict], output_filename: str = "output.mp4",scene_line_character_fontspace_limit:int=240,tts_enabled:bool =True,db_lounder: int = 30,tts_lag:int =1000,tts_tool:string ='polly'):
+
+def ace_attorney_anim(config: List[Dict], output_filename: str = "output.mp4", scene_line_character_fontspace_limit: int = 240, tts_enabled: bool = True, db_lounder: int = 30, tts_lag: int = 1000, tts_tool: string = 'polly',lag_frames:int =45,fps:int=18):
     root_filename = output_filename[:-4]
     audio_filename = output_filename + '.audio.mp3'
     text_filename = root_filename + '.txt'
     if os.path.exists(root_filename):
         shutil.rmtree(root_filename)
     os.mkdir(root_filename)
-    sound_effects = do_video(config, root_filename,scene_line_character_fontspace_limit)
-    do_audio(sound_effects, audio_filename,tts_enabled,db_lounder,tts_lag,tts_tool)
+    start = timeit.default_timer()
+
+    #Your statements here
+    sound_effects = do_video(config, root_filename,
+                             scene_line_character_fontspace_limit,lag_frames,fps)
+
+    stop = timeit.default_timer()
+
+    do_audio(sound_effects, audio_filename,
+             tts_enabled, db_lounder, tts_lag, tts_tool,fps)
+    stop1 = timeit.default_timer()
+    with open('timelog.csv','a+') as f:
+        f.write('do video=='+str(stop-start)+'\n')
+        f.write('do audio=='+str(stop1-stop)+'\n')
+
     videos = []
     with open(text_filename, 'w') as txt:
         for file in os.listdir(root_filename):
             videos.append(file)
-        videos.sort(key=lambda item : int(item[:-4]))
+        videos.sort(key=lambda item: int(item[:-4]))
         for video in videos:
-            txt.write('file ' + root_filename + '/' +video + '\n')
+            txt.write('file ' + root_filename + '/' + video + '\n')
     textInput = ffmpeg.input(text_filename, format='concat')
     audio = ffmpeg.input(audio_filename)
     if os.path.exists(output_filename):
@@ -504,36 +597,23 @@ def clear_folder(dir):
 #     return characters
 
 
-def comments_to_scene(comments: List[CommentBridge], name_music = "PWR", scene_character_limit=85,**kwargs):
+def comments_to_scene(comments: List[CommentBridge], name_music="PWR", scene_words_limit=85, **kwargs):
     scene = []
-
+    fmodel = loadModel()
     for comment in comments:
 
-        polarity = analizer.get_sentiment_offline(comment.body)
-        tokens = nlp(comment.body)
-        sentences = [sent.string.strip() for sent in tokens.sents]
-        joined_sentences  =format_line(comment.body,scene_character_limit)
-        # i = 0
-        # while i < len(sentences):
-        #     sentence = sentences[i]
-        #     if len(sentence) > scene_character_limit:
-        #         text_chunks = [chunk for chunk in wrap(sentence, scene_character_limit)]
-        #         joined_sentences = [*joined_sentences, *text_chunks]
-        #         i += 1
-        #     else:
-        #         if i + 1 < len(sentences) and len(f"{sentence} {sentences[i+1]}") <= scene_character_limit: # Maybe we can join two different sentences
-        #             joined_sentences.append(sentence + " " + sentences[i+1])
-        #             i += 2
-        #         else:
-        #             joined_sentences.append(sentence)
-        #             i += 1
+        polarity = analizer.get_sentiment_offline(comment.body,fmodel)
+        lang = prediction(comment.body,fmodel)
+        joined_sentences = longtext2paragraph(comment.body, scene_words_limit,lang,None)
+        print('segmented scene', joined_sentences)
         character_block = []
         character = comment.character
         main_emotion = random.choice(character_emotions[character]["neutral"])
         if polarity == '-' or comment.score < 0:
             main_emotion = random.choice(character_emotions[character]["sad"])
         elif polarity == '+':
-            main_emotion = random.choice(character_emotions[character]["happy"])
+            main_emotion = random.choice(
+                character_emotions[character]["happy"])
         # For each sentence we temporaly store it in character_block
         for idx, chunk in enumerate(joined_sentences):
             character_block.append(
@@ -569,7 +649,7 @@ def comments_to_scene(comments: List[CommentBridge], name_music = "PWR", scene_c
             if last_audio != new_audio:
                 last_audio = new_audio
                 change_audio = True
-            
+
         for obj in character_block:
             # We insert the data in the character block in the definitive scene object
             scene_objs.append(
@@ -591,5 +671,5 @@ def comments_to_scene(comments: List[CommentBridge], name_music = "PWR", scene_c
             formatted_scene["audio"] = last_audio
             change_audio = False
         formatted_scenes.append(formatted_scene)
-        # print('====',formatted_scenes)
+    print('====find space====')
     ace_attorney_anim(formatted_scenes, **kwargs)

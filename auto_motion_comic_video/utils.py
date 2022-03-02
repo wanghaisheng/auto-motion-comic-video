@@ -5,10 +5,28 @@ import os
 import requests
 import zipfile
 import textwrap
-
+from harvesttext import HarvestText
 from PIL import Image, ImageDraw, ImageFont , ImageFile
+import re
+import hanlp
+import budoux
+from nltk import tokenize
+import jieba
+from nltk.tokenize import word_tokenize
+import nltk
 
+regexpatternforurl=r"((?<=[^a-zA-Z0-9])(?:https?\:\/\/|[a-zA-Z0-9]{1,}\.{1}|\b)(?:\w{1,}\.{1}){1,5}(?:com|org|edu|gov|uk|net|ca|de|jp|fr|au|us|ru|ch|it|nl|se|no|es|mil|iq|io|ac|ly|sm){1}(?:\/[a-zA-Z0-9]{1,})*)"
 
+def TextCorrectorbeforeTTS(txt):
+	result = re.sub(regexpatternforurl, " ", txt)
+
+	result = result.replace("{w}","...")
+	result = result.replace("{i}","")
+	result = re.sub(r"\s*{.*}\s*", " ", result)
+	result = re.sub(r"\s*\[.*\]\s*", " ", result)
+    
+	# print(result)
+	return result
 def ensure_assets_are_available():
     if not os.path.exists('./assets'):
         print('Assets not present. Downloading them')
@@ -18,6 +36,20 @@ def ensure_assets_are_available():
         with zipfile.ZipFile('assets.zip', 'r') as zip_ref:
             zip_ref.extractall('assets')
         os.remove('assets.zip')
+def spliteKeyWord_en(str):
+    sent_text = nltk.sent_tokenize(str)  # this gives us a list of sentences
+    # now loop over each sentence and tokenize it separately
+    words = []
+    for sentence in sent_text:
+        tokenized_text = nltk.word_tokenize(sentence)
+        # tagged = nltk.pos_tag(tokenized_text)
+        words.extend(tokenized_text)
+    return words
+
+
+def spliteKeyWord_zh(str):
+    words = jieba.lcut(str)
+    return words
 
 def get_characters(common: Counter):
     users_to_characters = {}
@@ -157,7 +189,7 @@ def partition_list_from_sentence_charactersum(a, k, result):
         partition_between.append(int((i+1)*len(a)/k))
     # the ideal size for all partitions is the total height of the list divided
     # by the number of paritions
-    print(a)
+    # print(a)
     average_height = float(sum(a))/k
     best_score = None
     best_partitions = None
@@ -357,14 +389,14 @@ def print_best_partition(a, k):
         p, map(sum, p)))
 
 
-def  split_comment2scene(comment,scene_character_limit):
+def  split_comment2scene(comment,scene_words_limit):
 
     stences_list = find_sentences(comment)
     # print('--',stences_list)
     amount = [len(i) for i in stences_list]
     # print('---',amount)
     # scene_no=sum(amount) /250+1
-    chunks = int(sum(amount)/scene_character_limit) + 1
+    chunks = int(sum(amount)/scene_words_limit) + 1
     # print('---0', chunks)
     # print('---0', chunks)
 
@@ -379,16 +411,201 @@ def  split_comment2scene(comment,scene_character_limit):
         while '  ' in scene_content:
             scene_content = scene_content.replace('  ', ' ')
     return sentence_chunks
-def format_line(text,text_len):
-    # font = ImageFont.truetype('assets/igiari/Galmuri11.ttf', 15)
-    # image_size = font.getsize(text=text)
-    # print(image_size)
-    # text_len=80
-    if(len(text) > text_len):
 
-        wrapper = textwrap.TextWrapper(
-            width=text_len, break_long_words=False, replace_whitespace=False)
-        text = wrapper.wrap(text=text)
+resentencesp = re.compile('([,﹒﹔﹖﹗．；。！？]["’”」』]{0,2}|：(?=["‘“「『]{1,2}|$))')
+def splitsentence(sentence):
+    s = sentence
+    slist = []
+    for i in resentencesp.split(s):
+        if resentencesp.match(i) and slist:
+            slist[-1] += i
+        elif i:
+            slist.append(i)
+    return slist
+
+# import doctest
+
+SEPARATOR = r'@'
+RE_SENTENCE = re.compile(r'(\S.+?[.!?])(?=\s+|$)|(\S.+?)(?=[\n]|$)', re.UNICODE)
+AB_SENIOR = re.compile(r'([A-Z][a-z]{1,2}\.)\s(\w)', re.UNICODE)
+AB_ACRONYM = re.compile(r'(\.[a-zA-Z]\.)\s(\w)', re.UNICODE)
+UNDO_AB_SENIOR = re.compile(r'([A-Z][a-z]{1,2}\.)' + SEPARATOR + r'(\w)', re.UNICODE)
+UNDO_AB_ACRONYM = re.compile(r'(\.[a-zA-Z]\.)' + SEPARATOR + r'(\w)', re.UNICODE)
+
+
+def replace_with_separator(text, separator, regexs):
+    replacement = r"\1" + separator + r"\2"
+    result = text
+    for regex in regexs:
+        result = regex.sub(replacement, result)
+    return result
+
+
+def split_sentence(text, best=True):
+    """@NLP Utils
+    基于正则的分句
+    Examples:
+        >>> txt = '玄德幼时，与乡中小儿戏于树下。曰：“我为天子，当乘此车盖。”'
+        >>> for s in split_sentence(txt):
+        ...     print(s)
+        玄德幼时，与乡中小儿戏于树下。
+        曰：“我为天子，当乘此车盖。”
+    References: https://github.com/hankcs/HanLP/blob/master/hanlp/utils/rules.py
+    """
+
+    text = re.sub(r'([。！？?])([^”’])', r"\1\n\2", text)
+    text = re.sub(r'(\.{6})([^”’])', r"\1\n\2", text)
+    text = re.sub(r'(…{2})([^”’])', r"\1\n\2", text)
+    text = re.sub(r'([。！？?][”’])([^，。！？?])', r'\1\n\2', text)
+    for chunk in text.split("\n"):
+        chunk = chunk.strip()
+        if not chunk:
+            continue
+        if not best:
+            yield chunk
+            continue
+        processed = replace_with_separator(chunk, SEPARATOR, [AB_SENIOR, AB_ACRONYM])
+        for sentence in RE_SENTENCE.finditer(processed):
+            sentence = replace_with_separator(sentence.group(), r" ", [UNDO_AB_SENIOR, UNDO_AB_ACRONYM])
+            yield sentence
+def long_cjk_text2paragraph_budouX(text,text_len,count,lang):
+    parser = budoux.load_default_japanese_parser()
+    if lang in ['zh','jp','kr']:
+        text_len=text_len/2
+        # 由于text_len实际上是word个数，但中文是没有空格的，英文词的个数相当于2倍
+        results = parser.parse(text)
+        words= spliteKeyWord_zh(text)       
+        print('budoux：',results)
     else:
-        text = [text]
-    return text
+        # 都是用句号分割的 但我要逗号也分开
+        # results = tokenize.sent_tokenize(text)
+        # print('nltk: ',results)
+        rawresults = splitsentence(text)
+        words= spliteKeyWord_en(text)       
+
+        results=[]
+        print('raw results;',rawresults)
+        for r in rawresults:
+            if len(r.split(' '))>text_len:
+                print('this line is too loog',r)
+                wrapper = textwrap.TextWrapper(
+                        width=text_len, break_long_words=False, replace_whitespace=False)
+                text = wrapper.wrap(text=r)
+                for t in text:
+                    print('add line break',t)
+                    results.append(t+' ')
+            else:
+                results.append(r)
+
+    if count:
+        chunks=count
+    else:
+        chunks = int(len(words)/text_len) + 1     
+    print('分成几段',len(words),chunks)
+      
+    chunked_list = list()
+    if len(results)< chunks:
+        chunk_size=1
+    else:
+        chunk_size = int(len(results)/chunks)+1
+    print('每段几句话',chunk_size)
+
+    for i in range(0, len(results), chunk_size):
+        chunked_list.append(results[i:i+chunk_size])
+    final =[]
+    for r in chunked_list:
+        final.append(''.join(r))
+    return final
+
+def longtext2paragraph(text,text_len,lang,count):
+
+    if lang in ['zh','jp','kr']:
+
+        return long_cjk_text2paragraph_budouX(text,text_len,count,lang)
+
+    else:
+    
+        return long_cjk_text2paragraph_budouX(text,text_len,count,lang)
+
+'''
+Takses a string of text and breaks it up into a list of paragraphs.
+@str: the string to be broken up
+'''
+def long_en_text2paragraph(str,text_len,count):
+    if count:
+        chunks=count
+    else:
+        chunks = int(len(str)/text_len) + 1     
+    print('分成几段',len(str),chunks)
+      
+    chunked_list = list()
+    chunk_size = int(len(str.split(' '))/chunks)+1
+    print('meiduanjijuhua',chunk_size)
+
+    punctuation_list = ['.','!','?']
+    WORDS_PER_PARAGRAPH = chunk_size
+    words = str.split(' ') #string text seperated into words
+    paragraphs = [] #list of paragraphs
+    npars = 0 #number of paragraphs created
+    iter = 1 #word iteration number (starts at 1 for modulo math)
+    offset = 0 #word offset for modulo
+    pcount = 0 #punctuation count
+    pflag = False #punctuation flag
+    cflag = False #continuation flag
+    new_par = True #new paragraph flag
+
+    #determine if wall of text contains any of the punctuation characters
+    for p in punctuation_list:
+        pf = p in str
+        if pf:
+            pcount += 1
+
+    #pcount > 0 means punctuation characters found. assert punctuation flag
+    if pcount > 0:
+        pflag = True
+
+    #iterate over the words in the wall of text
+    for word in words:
+        if new_par: #create a new paragraph entry in the paragraph list
+            paragraphs.append('>' + word) #'>' adds quotation block on reddit
+            new_par = False
+        else: #append to current paragraph
+            paragraphs[npars] += ' ' + word
+
+        #this condition detects if the word iter has covered enough words to contitute a new paragraph.
+        #the offset is used to make up for longer paragraphs created by contiunuing sentance boundaries.
+        if (iter % WORDS_PER_PARAGRAPH) == 0:
+            if pflag: #punctuation is present
+                punc_count = 0
+
+                for punc in punctuation_list: #determine if current word contains punctuation.
+                    punc_count += word.find(punc)
+
+                if punc_count > (-len(punctuation_list)): #word contains punctuation
+                    npars += 1
+                    new_par = True
+                    iter += 1
+                    #offset = 0
+                else: #word contains no punctuation. assert continuation flag to keep adding words to paragraph.
+                    iter += 1
+                    cflag = True
+            else: #no punctuation detected, seperate just on word boundaries of size WORDS_PER_PARAGRAPH
+                npars += 1
+                new_par = True
+                iter += 1
+        else:
+            iter += 1
+            if cflag: #continuation flag asserted
+                #offset += 1 #increase offset
+                punc_count = 0
+
+                for punc in punctuation_list:
+                    punc_count += word.find(punc)
+
+                if punc_count > (-len(punctuation_list)): #word contains punctuation
+                    npars += 1
+                    new_par = True
+                    iter += 1
+                    cflag = False
+
+    return paragraphs

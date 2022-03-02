@@ -16,5 +16,5 @@ auto_motion_comic_video.egg-info/
 tts-tmp/
 *.mp4
 .wakatime-project
-
+timelog.csv
 mediapipe.py

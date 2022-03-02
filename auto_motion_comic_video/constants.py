@@ -202,8 +202,8 @@ location_map = {
 
 
 # Single_constants
-fps = 12
-lag_frames = 25
+# fps = 18
+# lag_frames = 45
 
 
 

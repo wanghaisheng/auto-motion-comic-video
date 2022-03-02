@@ -31,15 +31,16 @@ class Analizer:
             print('google can not be access ')        
             self.official_api = False            
 
-    def get_sentiment_offline(self,text):
+    def get_sentiment_offline(self,text,fmodel):
         if len(os.getenv('oe_bypass_sentiment', '')) > 0:
             return 'N'
         try:
             print('==========sentiment analysis==========')
-            language = prediction(text)
+            # language = prediction(text,fmodel)
+            language =langid.classify(text)[0]
+
             print('language detecting result:',language,'\n original:',text)
             # if not language =='en':
-            #     language =langid.classify(text)[0]
 
             self.language_counter.update({language: 1})
             # print(self.language_counter)
@@ -55,10 +56,10 @@ class Analizer:
             except ZeroDivisionError:
                 return 'N'
             except Exception as e:
-                print(e)
+                # print(e)
                 return self.process_google(text)
         except Exception as e:
-            print(e)
+            # print(e)
             return self.proccess_eng(text)
         
 
@@ -94,10 +95,10 @@ class Analizer:
             except ZeroDivisionError:
                 return 'N'
             except Exception as e:
-                print(e)
+                # print(e)
                 return self.process_google(text)
         except Exception as e:
-            print(e)
+            # print(e)
             return self.proccess_eng(text)
         
 
